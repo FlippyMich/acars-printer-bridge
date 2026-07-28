@@ -1,0 +1,11 @@
+{
+  "transport": "file",
+  "lock_port": 49331,
+  "file": { "path": "logs/test_output.bin" },
+  "format": { "columns": 32, "header": true, "feed_lines": 2 },
+  "sources": {
+    "tcp": { "enabled": true, "host": "127.0.0.1", "port": 19100 },
+    "folder": { "enabled": true, "path": "tests/spool", "poll_seconds": 0.5 }
+  },
+  "log_jobs": true
+}

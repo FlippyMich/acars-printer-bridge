@@ -1,0 +1,71 @@
+{
+  "transport": "ble",
+  "protocol": "auto",
+  "ble": {
+    "address": null,
+    "name_filter": "X6",
+    "write_char_uuid": null,
+    "notify_char_uuid": null,
+    "chunk_size": 180,
+    "chunk_delay_ms": 20,
+    "write_with_response": null,
+    "keep_connected": true,
+    "connect_timeout": 20.0,
+    "scan_timeout": 8.0
+  },
+  "serial": {
+    "port": "COM5",
+    "baudrate": 9600,
+    "chunk_size": 256,
+    "chunk_delay_ms": 10
+  },
+  "catprinter": {
+    "energy": 58000,
+    "quality": 51,
+    "drawing_mode": "text",
+    "feed_steps": 120,
+    "compress": false,
+    "font": null,
+    "line_spacing": 2,
+    "threshold": 160,
+    "margin_top": 4,
+    "margin_bottom": 4
+  },
+  "format": {
+    "columns": 32,
+    "codepage": "cp437",
+    "uppercase": false,
+    "header": false,
+    "wrap": true,
+    "feed_lines": 4,
+    "cut": false,
+    "strip_form_feed": true
+  },
+  "sources": {
+    "tcp": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 9100,
+      "idle_timeout": 4.0,
+      "first_byte_timeout": 15.0
+    },
+    "folder": {
+      "enabled": true,
+      "path": "spool",
+      "poll_seconds": 1.0
+    }
+  },
+  "autostart": {
+    "processes": ["FlightSimulator2024.exe", "FlightSimulator.exe"],
+    "poll_seconds": 10.0,
+    "stop_when_sim_closes": true,
+    "log_file": "logs/bridge.log"
+  },
+  "ui": {
+    "follow_simulator": true,
+    "windows_printer_name": "ACARS Printer",
+    "windows_port_name": "ACARS_RAW_9100"
+  },
+  "lock_port": 49321,
+  "log_jobs": true
+}

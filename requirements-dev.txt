@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Building APB.exe and APBinstaller.exe
+pyinstaller>=6.10
