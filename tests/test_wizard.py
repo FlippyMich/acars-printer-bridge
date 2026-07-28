@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from acars_bridge import config, printers  # noqa: E402
+from acars_bridge import config, installer, printers  # noqa: E402
 from acars_bridge.ui.wizard import STEPS, SetupWizard  # noqa: E402
 
 
@@ -130,6 +130,31 @@ def main() -> int:
         wizard._handle_event(("install_log", "INFO", "downloaded APB.exe"))
         results.append(
             check("install log shows lines", "downloaded APB.exe" in wizard.install_console.text.get("1.0", "end"))
+        )
+
+        print("\nInstall folder is selectable on both pages:")
+        results.append(check("two folder labels kept in sync", len(wizard.dir_labels) == 2))
+        target = ROOT / "logs" / "custom install"
+        wizard.install_dir = target / "ACARS Printer Bridge"
+        for label in wizard.dir_labels:
+            label.configure(text=str(wizard.install_dir))
+        results.append(
+            check(
+                "both labels show the chosen path",
+                all("custom install" in lbl.cget("text") for lbl in wizard.dir_labels),
+            )
+        )
+
+        print("\nDownload failure fallback:")
+        wizard._handle_event(("offer_manual",))
+        pump(wizard, 0.2)
+        results.append(check("manual pick button revealed", wizard.btn_pick_app.winfo_ismapped() == 1))
+        results.append(check("download page button revealed", wizard.btn_releases.winfo_ismapped() == 1))
+        results.append(
+            check(
+                "release page URL derived from the asset URL",
+                "/releases" in installer.DEFAULT_DOWNLOAD_URL.rsplit("/download/", 1)[0],
+            )
         )
 
         print("\nCompletion:")

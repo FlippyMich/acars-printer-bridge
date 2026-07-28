@@ -36,6 +36,8 @@ class SetupWizard:
         self.show_all = False
         self.install_dir = installer.default_install_dir()
         self.app_exe: Path | None = None
+        self.manual_app_path: Path | None = None
+        self.dir_labels: list[tk.Label] = []
         self.page_index = 0
         self.scanning = False
 
@@ -171,7 +173,7 @@ class SetupWizard:
         folder.pack(fill="x", pady=(14, 0))
         row = tk.Frame(folder.body, bg=COLORS["panel"])
         row.pack(fill="x")
-        self.dir_label = tk.Label(
+        dir_label = tk.Label(
             row,
             text=str(self.install_dir),
             font=self.fonts.label,
@@ -181,7 +183,8 @@ class SetupWizard:
             padx=10,
             pady=7,
         )
-        self.dir_label.pack(side="left", fill="x", expand=True)
+        dir_label.pack(side="left", fill="x", expand=True)
+        self.dir_labels.append(dir_label)
         CockpitButton(row, self.fonts, "CHANGE", self._choose_dir, kind="ghost").pack(
             side="left", padx=(10, 0)
         )
@@ -349,6 +352,35 @@ class SetupWizard:
         page = tk.Frame(self.container, bg=COLORS["bg"])
         panel = Panel(page, self.fonts, "Install")
         panel.pack(fill="x")
+
+        # The folder is also selectable here, not just on the welcome page.
+        folder_row = tk.Frame(panel.body, bg=COLORS["panel"])
+        folder_row.pack(fill="x", pady=(0, 10))
+        tk.Label(
+            folder_row,
+            text="FOLDER",
+            font=self.fonts.label,
+            bg=COLORS["panel"],
+            fg=COLORS["text_dim"],
+            width=8,
+            anchor="w",
+        ).pack(side="left")
+        install_label = tk.Label(
+            folder_row,
+            text=str(self.install_dir),
+            font=self.fonts.label,
+            bg=COLORS["panel_deep"],
+            fg=COLORS["text"],
+            anchor="w",
+            padx=10,
+            pady=6,
+        )
+        install_label.pack(side="left", fill="x", expand=True)
+        self.dir_labels.append(install_label)
+        CockpitButton(folder_row, self.fonts, "CHANGE", self._choose_dir, kind="ghost").pack(
+            side="left", padx=(10, 0)
+        )
+
         self.task_rows: dict[str, tuple[Lamp, tk.Label]] = {}
         for key, label in (
             ("folder", "INSTALL FOLDER"),
@@ -389,10 +421,19 @@ class SetupWizard:
             0, 0, 0, 8, outline="", fill=COLORS["accent"]
         )
 
+        actions = tk.Frame(panel.body, bg=COLORS["panel"])
+        actions.pack(fill="x", pady=(12, 0))
         self.btn_install = CockpitButton(
-            panel.body, self.fonts, "START INSTALL", self.run_install, kind="go", big=True
+            actions, self.fonts, "START INSTALL", self.run_install, kind="go", big=True
         )
-        self.btn_install.pack(anchor="w", pady=(12, 0))
+        self.btn_install.pack(side="left")
+        # Only shown when the download fails, so the user is never stuck.
+        self.btn_pick_app = CockpitButton(
+            actions, self.fonts, "SELECT APB.EXE MANUALLY", self.select_app_manually, big=True
+        )
+        self.btn_releases = CockpitButton(
+            actions, self.fonts, "OPEN DOWNLOAD PAGE", self.open_releases_page, kind="ghost", big=True
+        )
 
         log = Panel(page, self.fonts, "Install log")
         log.pack(fill="both", expand=True, pady=(14, 0))
@@ -598,10 +639,37 @@ class SetupWizard:
 
     # ----------------------------------------------------------- page 3: install
     def _choose_dir(self) -> None:
-        chosen = filedialog.askdirectory(initialdir=str(self.install_dir.parent))
-        if chosen:
-            self.install_dir = Path(chosen) / config.APP_DIR_NAME
-            self.dir_label.configure(text=str(self.install_dir))
+        chosen = filedialog.askdirectory(
+            title="Where should the app be installed?",
+            initialdir=str(self.install_dir.parent),
+            mustexist=False,
+        )
+        if not chosen:
+            return
+        picked = Path(chosen)
+        # Do not nest a second "ACARS Printer Bridge" inside a folder of that name.
+        if picked.name.lower() != config.APP_DIR_NAME.lower():
+            picked = picked / config.APP_DIR_NAME
+        self.install_dir = picked
+        for label in self.dir_labels:
+            label.configure(text=str(self.install_dir))
+
+    def select_app_manually(self) -> None:
+        """Fallback when the download fails: point at a local APB.exe."""
+        chosen = filedialog.askopenfilename(
+            title="Select APB.exe",
+            filetypes=[("APB application", "APB.exe"), ("Programs", "*.exe")],
+        )
+        if not chosen:
+            return
+        self.manual_app_path = Path(chosen)
+        self.install_console.append(_now(), "INFO", f"Using {self.manual_app_path}")
+        self.btn_pick_app.pack_forget()
+        self.btn_releases.pack_forget()
+        self.run_install()
+
+    def open_releases_page(self) -> None:
+        system.open_url(installer.DEFAULT_DOWNLOAD_URL.rsplit("/download/", 1)[0])
 
     def _set_task(self, key: str, state: str, text: str) -> None:
         lamp, label = self.task_rows[key]
@@ -639,9 +707,7 @@ class SetupWizard:
             put(("progress", done / total if total else 0.0))
 
         try:
-            app_exe, message = await asyncio.to_thread(
-                installer.place_app, install_dir, installer.DEFAULT_DOWNLOAD_URL, progress
-            )
+            app_exe, message = await self._fetch_app(install_dir, progress)
             self.app_exe = app_exe
             put(("progress", 1.0))
             put(("task", "app", "on", app_exe.name))
@@ -649,7 +715,15 @@ class SetupWizard:
         except Exception as exc:
             put(("task", "app", "fault", "failed"))
             put(("install_log", "ERROR", str(exc)))
-            put(("install_log", "WARNING", "Put APB.exe next to this installer and try again."))
+            put(
+                (
+                    "install_log",
+                    "WARNING",
+                    "Download the file yourself with OPEN DOWNLOAD PAGE, then press "
+                    "SELECT APB.EXE MANUALLY.",
+                )
+            )
+            put(("offer_manual",))
             return
 
         put(("task", "shortcuts", "info", "creating..."))
@@ -679,6 +753,41 @@ class SetupWizard:
         put(("task", "autostart", "on" if ok else "caution", "armed" if ok else "skipped"))
         put(("install_log", "INFO" if ok else "WARNING", message))
         put(("install_ready",))
+
+    async def _fetch_app(self, install_dir: Path, progress) -> tuple[Path, str]:
+        """Get APB.exe into place: manual pick, local copy, or download with retries.
+
+        A freshly uploaded release asset can 404 for a few seconds while GitHub
+        publishes the /latest/download/ redirect, so a single failure is not the
+        end of the story.
+        """
+        import shutil
+
+        if self.manual_app_path is not None:
+            target = install_dir / installer.APP_EXE_NAME
+            if self.manual_app_path.resolve() != target.resolve():
+                await asyncio.to_thread(shutil.copy2, self.manual_app_path, target)
+            return target, f"copied {self.manual_app_path.name} from {self.manual_app_path.parent}"
+
+        attempts = 3
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                return await asyncio.to_thread(
+                    installer.place_app, install_dir, installer.DEFAULT_DOWNLOAD_URL, progress
+                )
+            except Exception as exc:
+                last_error = exc
+                if attempt < attempts:
+                    self.events.put(
+                        (
+                            "install_log",
+                            "WARNING",
+                            f"attempt {attempt}/{attempts} failed ({exc}) - retrying in 5s",
+                        )
+                    )
+                    await asyncio.sleep(5)
+        raise RuntimeError(str(last_error))
 
     def launch_app(self) -> None:
         if self.app_exe is None or not self.app_exe.exists():
@@ -745,6 +854,9 @@ class SetupWizard:
             self._set_progress(event[1])
         elif kind == "install_log":
             self.install_console.append(_now(), event[1], event[2])
+        elif kind == "offer_manual":
+            self.btn_pick_app.pack(side="left", padx=(10, 0))
+            self.btn_releases.pack(side="left", padx=(10, 0))
         elif kind == "install_ready":
             summary = [f"App installed in {self.install_dir}"]
             if self.selected is not None:
