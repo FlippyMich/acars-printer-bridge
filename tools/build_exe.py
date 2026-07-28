@@ -14,28 +14,82 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from acars_bridge import __version__  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
 WORK = ROOT / "build"
 ASSETS = ROOT / "acars_bridge" / "ui" / "assets"
+
+PUBLISHER = "FlippyMich"
+PRODUCT = "ACARS Printer Bridge"
 
 TARGETS = {
     "app": {
         "name": "APB",
         "entry": ROOT / "tools" / "entry_app.py",
         "icon": ASSETS / "app.ico",
+        "description": "ACARS Printer Bridge - Fenix A32X to Bluetooth thermal printer",
     },
     "installer": {
         "name": "APBinstaller",
         "entry": ROOT / "tools" / "entry_installer.py",
         "icon": ASSETS / "app.ico",
+        "description": "ACARS Printer Bridge Setup",
     },
 }
+
+
+def write_version_file(target: str) -> Path:
+    """Windows version resource.
+
+    Without it the exe shows "Unknown publisher" and empty file details, which
+    is both unhelpful to users and a red flag for antivirus heuristics.
+    """
+    spec = TARGETS[target]
+    parts = (__version__.split(".") + ["0", "0", "0", "0"])[:4]
+    numbers = ", ".join(str(int(part)) for part in parts)
+    content = f"""VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=({numbers}),
+    prodvers=({numbers}),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0),
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable('040904B0', [
+        StringStruct('CompanyName', '{PUBLISHER}'),
+        StringStruct('FileDescription', '{spec["description"]}'),
+        StringStruct('FileVersion', '{__version__}'),
+        StringStruct('InternalName', '{spec["name"]}'),
+        StringStruct('LegalCopyright',
+                     'Copyright (c) 2026 {PUBLISHER} - MIT License'),
+        StringStruct('OriginalFilename', '{spec["name"]}.exe'),
+        StringStruct('ProductName', '{PRODUCT}'),
+        StringStruct('ProductVersion', '{__version__}'),
+      ]),
+    ]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])]),
+  ],
+)
+"""
+    WORK.mkdir(parents=True, exist_ok=True)
+    path = WORK / f"version_{spec['name']}.txt"
+    path.write_text(content, encoding="utf-8")
+    return path
 
 
 def build(target: str) -> Path:
     spec = TARGETS[target]
     print(f"\n=== building {spec['name']}.exe ===")
+    version_file = write_version_file(target)
     command = [
         sys.executable,
         "-m",
@@ -48,6 +102,8 @@ def build(target: str) -> Path:
         str(spec["name"]),
         "--icon",
         str(spec["icon"]),
+        "--version-file",
+        str(version_file),
         "--add-data",
         f"{ASSETS}{os_sep()}acars_bridge/ui/assets",
         "--distpath",

@@ -65,6 +65,11 @@ The wizard walks you through five steps:
 Nothing is written outside the install folder, your Startup folder and `%LOCALAPPDATA%`.
 Administrator rights are requested only for the Windows printer.
 
+> **"Windows protected your PC"** - the executables are not code-signed yet (a certificate
+> costs real money for a free tool), so SmartScreen warns the first time. Click
+> **More info → Run anyway**. Everything here is open source: read the code, or build the exe
+> yourself with `tools\build_exe.py` and compare.
+
 ### From source
 
 ```bat
@@ -278,6 +283,18 @@ Build the executables and regenerate the icons:
 .venv\Scripts\python.exe tools\build_assets.py    :: logo, .ico, Discord mark
 .venv\Scripts\python.exe tools\build_exe.py       :: dist\APB.exe + dist\APBinstaller.exe
 ```
+
+Code signing is optional and needs a certificate you buy yourself (Azure Trusted Signing, an
+OV certificate on a token, or EV if you want the SmartScreen warning gone from day one). Once
+you have one:
+
+```bat
+tools\sign.bat store "certificate thumbprint or subject"   :: certificate store / token
+tools\sign.bat azure  path\to\trusted-signing-metadata.json
+```
+
+It signs both executables with a SHA-256 timestamp and verifies them. Do not bother with a
+self-signed certificate: nobody else can trust it, so the warning stays.
 
 **Before publishing a release**, set `DEFAULT_DOWNLOAD_URL` in
 [`acars_bridge/installer.py`](acars_bridge/installer.py) to your own release asset, rebuild the
